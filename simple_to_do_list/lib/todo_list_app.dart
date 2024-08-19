@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:simple_to_do_list/top_app_bar.dart';
+import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 // import 'uncompleted_tasks.dart';
 
 class TodoListApp extends StatefulWidget {
@@ -16,6 +19,7 @@ class Task {
 }
 
 class _TodoListAppState extends State<TodoListApp> {
+  List<Task> _textList = [];
   final TodoList _todoList = TodoList();
 
   final _textController = TextEditingController();
@@ -26,7 +30,68 @@ class _TodoListAppState extends State<TodoListApp> {
     super.dispose();
   }
 
-  List<Task> _textList = [];
+  void _initHive() async {
+    final dir = await getApplicationDocumentsDirectory();
+    Hive.init(dir.path);
+    Hive.registerAdapter(TaskAdapter());
+  }
+
+  void _loadTasks() async {
+    final box = await Hive.openBox<Task>('tasks');
+    _textList = box.values.toList();
+    setState(() {});
+  }
+
+  void _saveTasks() async {
+    final box = await Hive.openBox<Task>('tasks');
+    box.putAll(_textList.asMap());
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initHive();
+    _loadTasks();
+  }
+
+  void _editTask(int index) {
+    String _newTaskText = _textList[index].text;
+    final _textFieldController = TextEditingController(text: _newTaskText);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Edit Task'),
+          content: TextField(
+            controller: _textFieldController,
+            onChanged: (value) {
+              _newTaskText = value;
+            },
+          ),
+          actions: [
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Save'),
+              onPressed: () {
+                setState(() {
+                  _textList[index].text = _newTaskText;
+                  _saveTasks();
+                });
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -63,6 +128,7 @@ class _TodoListAppState extends State<TodoListApp> {
                                       _textList.removeAt(index);
                                       _todoList.uncompletedTasks
                                           .removeAt(index);
+                                      _saveTasks();
                                     }
                                   });
                                 }),
@@ -78,10 +144,25 @@ class _TodoListAppState extends State<TodoListApp> {
                             IconButton(
                               onPressed: () {
                                 setState(() {
+                                  _editTask(index);
+                                });
+                              },
+                              icon: Icon(
+                                Icons.edit,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(
+                              width: 10,
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                setState(() {
                                   _todoList.deletedTasks.add(_textList[index]);
                                   _textList.removeAt(index);
 
                                   _todoList.uncompletedTasks.removeAt(index);
+                                  _saveTasks();
                                 });
                               },
                               icon: Icon(
@@ -138,6 +219,7 @@ class _TodoListAppState extends State<TodoListApp> {
 
                       _todoList.uncompletedTasks
                           .add(Task(text: _textController.text));
+                      _saveTasks();
 
                       setState(() {});
                       _textController.clear();
@@ -194,5 +276,21 @@ class _TodoListAppState extends State<TodoListApp> {
         ],
       ),
     );
+  }
+}
+
+class TaskAdapter extends TypeAdapter<Task> {
+  @override
+  int get typeId => 0;
+
+  @override
+  Task read(BinaryReader reader) {
+    final text = reader.readString();
+    return Task(text: text);
+  }
+
+  @override
+  void write(BinaryWriter writer, Task obj) {
+    writer.writeString(obj.text);
   }
 }
